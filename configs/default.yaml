@@ -1,0 +1,59 @@
+seed: 123
+sample_rate_hz: 256
+
+data:
+  n_subjects: 30
+  trials_per_subject: 8
+  task: "sit_to_stand"
+  duration_s: 2.7
+  phase_durations_s: [0.5, 0.7, 1.0, 0.5]  # prep, momentum, extension, stabilization
+
+signals:
+  eeg:
+    n_channels: 8
+    mu_hz: 10.0
+    beta_hz: 20.0
+    erd_factor: 0.45          # amplitude multiplier during movement
+    rebound_factor: 1.20      # amplitude multiplier during stabilization
+    noise_std: 0.35
+    artifact_prob: 0.02
+  emg:
+    muscles: ["quad", "ham", "glute", "ta", "gast", "erector"]
+    base_noise_std: 0.10
+    crosstalk: 0.10
+    fatigue: false
+
+digital_twin:
+  anthropometry:
+    thigh_m: [0.40, 0.06]   # mean, std
+    shank_m: [0.43, 0.06]
+    foot_m:  [0.26, 0.03]
+    trunk_m: [0.55, 0.07]
+  dynamics:
+    knee_I: [0.25, 0.05]
+    knee_b: [0.12, 0.03]
+    knee_k: [6.0, 1.5]
+  assistance:
+    assist_ratio_mean: 0.35
+    assist_ratio_std: 0.10
+    max_exo_torque: 25.0
+
+synergy:
+  n_synergies: 3
+  nmf_max_iter: 800
+
+train:
+  split_strategy: subject   # segment | trial | subject
+  segment_len: 128
+  segment_stride: 64
+  batch_size: 128
+  epochs_phase: 6
+  epochs_torque: 8
+  lr: 0.001
+  weight_decay: 0.0001
+  train_split: 0.75
+  val_split: 0.10
+  test_split: 0.15
+
+robustness:
+  emg_noise_multipliers: [1.0, 1.5, 2.0, 3.0]
