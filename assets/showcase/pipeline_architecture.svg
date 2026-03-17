@@ -1,0 +1,94 @@
+<svg width="1400" height="820" viewBox="0 0 1400 820" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1400" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f6f3ea"/>
+      <stop offset="1" stop-color="#eef4f1"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="90" y1="90" x2="1310" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17313e"/>
+      <stop offset="1" stop-color="#2a5b60"/>
+    </linearGradient>
+    <linearGradient id="card1" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff7e8"/>
+      <stop offset="1" stop-color="#ffe7b8"/>
+    </linearGradient>
+    <linearGradient id="card2" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#eef8ff"/>
+      <stop offset="1" stop-color="#cfe8ff"/>
+    </linearGradient>
+    <linearGradient id="card3" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#eefaf2"/>
+      <stop offset="1" stop-color="#caeccf"/>
+    </linearGradient>
+    <linearGradient id="card4" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff1ef"/>
+      <stop offset="1" stop-color="#ffd2cb"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#19303a" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0 0L12 6L0 12V0Z" fill="#2d4d57"/>
+    </marker>
+    <style>
+      .title { font: 700 42px 'DejaVu Sans', Arial, sans-serif; fill: #ffffff; }
+      .subtitle { font: 400 18px 'DejaVu Sans', Arial, sans-serif; fill: #dbe7eb; }
+      .cardTitle { font: 700 30px 'DejaVu Sans', Arial, sans-serif; fill: #17313e; }
+      .body { font: 400 20px 'DejaVu Sans', Arial, sans-serif; fill: #24424c; }
+      .small { font: 600 18px 'DejaVu Sans', Arial, sans-serif; fill: #335965; }
+      .pill { font: 700 17px 'DejaVu Sans', Arial, sans-serif; fill: #17313e; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="820" rx="32" fill="url(#bg)"/>
+  <rect x="44" y="42" width="1312" height="180" rx="28" fill="url(#hero)" filter="url(#shadow)"/>
+  <text x="86" y="120" class="title">STS Digital Twin Pipeline</text>
+  <text x="86" y="162" class="subtitle">From in-silico trial generation to multimodal decoding, synergy discovery, torque regression, and visual benchmarking.</text>
+
+  <rect x="88" y="114" width="156" height="38" rx="19" fill="#f3c969"/>
+  <text x="112" y="139" class="pill">Kinematics + EEG + EMG</text>
+  <rect x="260" y="114" width="150" height="38" rx="19" fill="#bde5ff"/>
+  <text x="291" y="139" class="pill">Subject-wise Eval</text>
+  <rect x="426" y="114" width="132" height="38" rx="19" fill="#c6efc8"/>
+  <text x="457" y="139" class="pill">Visual Reports</text>
+
+  <rect x="90" y="294" width="262" height="250" rx="28" fill="url(#card1)" filter="url(#shadow)"/>
+  <text x="118" y="348" class="cardTitle">1. Generate</text>
+  <text x="118" y="392" class="body">Parametric sit-to-stand trials</text>
+  <text x="118" y="424" class="body">with synchronized modalities:</text>
+  <text x="118" y="468" class="small">• 3D joint trajectories</text>
+  <text x="118" y="500" class="small">• EEG channels with phase-linked dynamics</text>
+  <text x="118" y="532" class="small">• EMG envelopes and raw muscle activity</text>
+
+  <rect x="404" y="294" width="262" height="250" rx="28" fill="url(#card2)" filter="url(#shadow)"/>
+  <text x="432" y="348" class="cardTitle">2. Factorize</text>
+  <text x="432" y="392" class="body">Fit NMF synergies on EMG</text>
+  <text x="432" y="424" class="body">to expose interpretable muscle groups</text>
+  <text x="432" y="468" class="small">• synergy weights</text>
+  <text x="432" y="500" class="small">• phase-normalized activations</text>
+  <text x="432" y="532" class="small">• VAF summary for explainability</text>
+
+  <rect x="718" y="294" width="262" height="250" rx="28" fill="url(#card3)" filter="url(#shadow)"/>
+  <text x="746" y="348" class="cardTitle">3. Train</text>
+  <text x="746" y="392" class="body">Benchmark multimodal models</text>
+  <text x="746" y="424" class="body">under a fair split protocol</text>
+  <text x="746" y="468" class="small">• EEG-only phase decoder</text>
+  <text x="746" y="500" class="small">• EMG-only phase decoder</text>
+  <text x="746" y="532" class="small">• Fusion phase and torque models</text>
+
+  <rect x="1032" y="294" width="278" height="250" rx="28" fill="url(#card4)" filter="url(#shadow)"/>
+  <text x="1060" y="348" class="cardTitle">4. Showcase</text>
+  <text x="1060" y="392" class="body">Export portfolio-grade artifacts</text>
+  <text x="1060" y="424" class="body">for demos and technical reviews</text>
+  <text x="1060" y="468" class="small">• benchmark report</text>
+  <text x="1060" y="500" class="small">• paper-style figures</text>
+  <text x="1060" y="532" class="small">• GIFs and MP4 visualizations</text>
+
+  <path d="M352 419H392" stroke="#2d4d57" stroke-width="8" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M666 419H706" stroke="#2d4d57" stroke-width="8" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M980 419H1020" stroke="#2d4d57" stroke-width="8" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <rect x="94" y="616" width="1212" height="118" rx="26" fill="#ffffff" fill-opacity="0.88"/>
+  <text x="124" y="668" class="cardTitle" style="font-size:28px;">Core Stack</text>
+  <text x="124" y="706" class="body" style="font-size:22px;">Python  •  NumPy / SciPy  •  PyTorch  •  Matplotlib  •  ffmpeg  •  config-driven runs  •  validation reports</text>
+</svg>

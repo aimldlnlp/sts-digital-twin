@@ -1,37 +1,62 @@
 # STS Digital Twin Pipeline
 
-> A multimodal sit-to-stand digital twin for offline phase decoding, synergy analysis, and assistive torque benchmarking.
+> A multimodal sit-to-stand virtual lab for phase decoding, EMG synergy analysis, and assistive torque benchmarking.
+
+![Python](https://img.shields.io/badge/Python-3.x-17313e?style=flat-square&logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-Modeling-c54f1f?style=flat-square&logo=pytorch&logoColor=white)
+![Evaluation](https://img.shields.io/badge/Eval-Subject--wise-2d6a4f?style=flat-square)
+![Artifacts](https://img.shields.io/badge/Outputs-Figures%20%7C%20GIFs%20%7C%20Reports-3f7d8f?style=flat-square)
 
 <p align="center">
-  <img src="assets/showcase/fig_skeleton_grid_2x2.png" alt="STS skeleton snapshots" width="48%" />
-  <img src="assets/showcase/fig3_synergy_weights.png" alt="EMG synergy weights" width="48%" />
+  <img src="assets/showcase/trial_000_multimodal.gif" alt="Multimodal STS demo" width="100%" />
 </p>
 
-This repository packages an end-to-end STS virtual-lab workflow:
+This project turns a sit-to-stand motion into a full offline benchmark: synchronized kinematics, EEG, EMG, phase labels, assistive torque targets, interpretable synergies, model ablations, and visual reports in one reproducible pipeline.
 
-- generate synchronized 3D stick-skeleton kinematics, EEG, EMG, phase labels, and exoskeleton torque targets
-- fit interpretable EMG synergies with NMF
-- train EEG-only, EMG-only, and fusion phase decoders plus a fusion torque regressor
-- export paper-style figures, demo videos, and a validation report for each run
+## At A Glance
 
-The data source is in-silico. The value of the project is a reproducible offline development bench for multimodal controller R&D, ablation studies, and reporting discipline before deployment on real recordings.
+- portfolio-ready multimodal demo with animated previews
+- end-to-end benchmark from generated trials to validation report
+- clean artifact story: figures, GIFs, MP4s, JSON metrics, Markdown summary
+- stronger evaluation framing with subject-wise split by default
 
-## Why This Repo Reads Like A Serious Project
+## Highlights
 
-- Subject-wise evaluation is the default protocol in [`configs/default.yaml`](configs/default.yaml), so headline metrics are not inflated by overlapping windows from the same subject.
-- Every run emits a structured artifact set: raw trials, trained models, scalers, figures, videos, and a Markdown/JSON validation report.
-- The pipeline is opinionated around benchmark hygiene: ablations, robustness curves, synergy summaries, and a dedicated report generator.
+- multimodal STS pipeline from raw trial generation to benchmark report
+- EEG-only, EMG-only, and fusion phase decoding
+- torque prediction for exoskeleton assistance studies
+- subject-wise evaluation by default
+- paper-style figures, videos, and validation reports per run
 
-## Latest Benchmark Snapshot
+## Demo Gallery
+
+<p align="center">
+  <img src="assets/showcase/trial_000_multimodal.gif" alt="Trial 000 multimodal demo" width="49%" />
+  <img src="assets/showcase/trial_000_ablation.gif" alt="Trial 000 ablation demo" width="49%" />
+</p>
+
+<p align="center">
+  <img src="assets/showcase/trial_112_multimodal.gif" alt="Trial 112 multimodal demo" width="49%" />
+  <img src="assets/showcase/fig_skeleton_grid_2x2.png" alt="Skeleton snapshot grid" width="49%" />
+</p>
+
+## System Overview
+
+<p align="center">
+  <img src="assets/showcase/pipeline_architecture.svg" alt="Pipeline architecture" width="100%" />
+</p>
+
+## What It Shows
+
+- 3D stick-skeleton kinematics across the full sit-to-stand cycle
+- EEG and EMG signals aligned with movement phase
+- learned EMG synergy structure
+- fusion vs single-modality phase decoding
+- assistive torque prediction under a controlled benchmark protocol
+
+## Benchmark Snapshot
 
 Reference report: [`docs/validation_subject.md`](docs/validation_subject.md)
-
-Subject-wise protocol:
-- 30 subjects
-- 240 trials
-- 2160 segments
-- 22 train / 3 val / 5 test subjects
-- zero subject overlap across splits
 
 | Task | Model | Result |
 | --- | --- | ---: |
@@ -41,30 +66,72 @@ Subject-wise protocol:
 | Torque prediction | Fusion | RMSE `0.840`, approx. R2 `0.314`, corr `0.587` |
 | Synergy decomposition | NMF | VAF `0.645` with `K=3` synergies |
 
-These numbers reflect an offline in-silico benchmark, not a clinical claim.
+Protocol:
+- 30 subjects
+- 240 trials
+- 2160 segments
+- subject-wise split with zero subject overlap across train, val, and test
 
-## Pipeline
+## Visual Outputs
 
-1. Generate parametric STS trials with synchronized kinematics, EEG, EMG, phase labels, and torque targets.
-2. Factorize muscle activity into interpretable synergies.
-3. Train multimodal phase and torque models under a configurable split strategy.
-4. Render figures, videos, and a validation report for the run.
+<p align="center">
+  <img src="assets/showcase/fig1_coupling_heatmap.png" alt="Cross-modal coupling heatmap" width="49%" />
+  <img src="assets/showcase/fig3_synergy_weights.png" alt="Synergy weights" width="49%" />
+</p>
 
-## Run Everything
+The full local run also exports:
+- coupling heatmaps
+- EEG time-frequency plots
+- synergy activation heatmaps
+- modality ablation figures
+- torque prediction overlays
+- robustness curves
+- MP4 demo videos
+
+## Why It Feels Like A Real Project
+
+- config-driven pipeline with a single `run_all.py` entrypoint
+- benchmark artifacts saved per run
+- validation report in Markdown and JSON
+- fairer default evaluation with `split_strategy: subject`
+- clear separation between demo assets and heavyweight local outputs
+
+The data source is still in-silico. The point of the repository is to function as a serious offline R&D bench for multimodal controller development, not to pretend these are clinical trial results.
+
+## Tech Stack
+
+- Python for orchestration and experiment scripting
+- NumPy and SciPy for signal generation and feature processing
+- PyTorch for phase decoding and torque regression models
+- Matplotlib for paper-style visual outputs
+- ffmpeg for demo video and GIF export
+- YAML configs for reproducible run settings
+
+## Quickstart
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 python run_all.py --config configs/default.yaml
 ```
 
-Outputs are written to `outputs/<run_id>/`:
+Generated outputs land in `outputs/<run_id>/`:
+- `data_raw/`
+- `artifacts/`
+- `figures/`
+- `videos/`
+- `reports/`
 
-- `data_raw/` generated trial `.npz` files
-- `artifacts/` models, scalers, and NMF outputs
-- `figures/` paper-style figures
-- `videos/` multimodal and ablation MP4s
-- `reports/` validation report in Markdown and JSON
+## Pipeline
 
-## Step-By-Step
+1. Generate synchronized STS trials with kinematics, EEG, EMG, phase labels, and torque targets.
+2. Fit EMG synergies with NMF.
+3. Train phase decoders for `eeg`, `emg`, and `fusion`.
+4. Train the fusion torque regressor.
+5. Render figures, videos, and a validation report.
+
+## Run Manually
 
 ```bash
 python scripts/01_generate_data.py --config configs/default.yaml
@@ -80,7 +147,7 @@ python scripts/08_make_video_ablation.py --run_dir outputs/<run_id> --trial_inde
 python scripts/09_make_validation_report.py --run_dir outputs/<run_id>
 ```
 
-To recompute a fair benchmark for an existing run under a specific protocol:
+To recompute a benchmark for an existing run with subject-wise evaluation:
 
 ```bash
 python scripts/09_make_validation_report.py \
@@ -89,42 +156,18 @@ python scripts/09_make_validation_report.py \
   --recompute
 ```
 
-## Evaluation Protocol
+## Repo Assets
 
-The default config uses:
-
-- `split_strategy: subject`
-- `segment_len: 128` samples
-- `segment_stride: 64` samples
-- `train / val / test: 0.75 / 0.10 / 0.15`
-
-This keeps the reported metrics closer to a real generalization test than segment-level random splitting.
-
-## Example Artifacts
-
-- Validation report: [`docs/validation_subject.md`](docs/validation_subject.md)
-- Skeleton showcase: [`assets/showcase/fig_skeleton_grid_2x2.png`](assets/showcase/fig_skeleton_grid_2x2.png)
-- Synergy showcase: [`assets/showcase/fig3_synergy_weights.png`](assets/showcase/fig3_synergy_weights.png)
-- Coupling heatmap: [`assets/showcase/fig1_coupling_heatmap.png`](assets/showcase/fig1_coupling_heatmap.png)
-- Full figures, reports, and videos are generated under `outputs/<run_id>/` during local runs.
-
-## Setup
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-PyTorch works on CPU and can use CUDA if you install the matching wheel for your system. MP4 rendering requires `ffmpeg` on `PATH`.
+- benchmark report: [`docs/validation_subject.md`](docs/validation_subject.md)
+- showcase figures and GIFs: [`assets/showcase`](assets/showcase)
 
 ## Intended Use
 
-Use this project for:
-
-- offline algorithm development
+Use this repo for:
+- portfolio showcase
+- offline algorithm prototyping
 - multimodal ablation studies
-- digital twin demos and internal technical showcases
-- preclinical benchmarking before real-data integration
+- internal demo and visualization workflows
+- pre-real-data benchmark development
 
-Do not use this repository to imply validated performance on real human sensor recordings without an external calibration and evaluation stage.
+Do not use it to claim validated performance on real human recordings without an external calibration and evaluation stage.
