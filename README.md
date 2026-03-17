@@ -40,12 +40,6 @@ This project turns a sit-to-stand motion into a full offline benchmark: synchron
   <img src="assets/showcase/fig_skeleton_grid_2x2.png" alt="Skeleton snapshot grid" width="49%" />
 </p>
 
-## System Overview
-
-<p align="center">
-  <img src="assets/showcase/pipeline_architecture.svg" alt="Pipeline architecture" width="100%" />
-</p>
-
 ## What It Shows
 
 - 3D stick-skeleton kinematics across the full sit-to-stand cycle
