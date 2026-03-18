@@ -2,11 +2,6 @@
 
 > A multimodal sit-to-stand virtual lab for phase decoding, EMG synergy analysis, and assistive torque benchmarking.
 
-![Python](https://img.shields.io/badge/Python-3.x-17313e?style=flat-square&logo=python&logoColor=white)
-![PyTorch](https://img.shields.io/badge/PyTorch-Modeling-c54f1f?style=flat-square&logo=pytorch&logoColor=white)
-![Evaluation](https://img.shields.io/badge/Eval-Subject--wise-2d6a4f?style=flat-square)
-![Artifacts](https://img.shields.io/badge/Outputs-Figures%20%7C%20GIFs%20%7C%20Reports-3f7d8f?style=flat-square)
-
 <p align="center">
   <img src="assets/showcase/trial_000_multimodal.gif" alt="Multimodal STS demo" width="100%" />
 </p>
