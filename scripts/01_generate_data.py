@@ -10,12 +10,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", type=str, required=True)
     ap.add_argument("--out_root", type=str, default="outputs")
+    ap.add_argument("--run_id", type=str, default=None)
     args = ap.parse_args()
 
     cfg = load_yaml(Path(args.config))
     set_seed(int(cfg["seed"]))
 
-    run_id = now_run_id("sts")
+    run_id = args.run_id or now_run_id("sts")
     run_dir = ensure_dir(Path(args.out_root)/run_id)
     # persist config for reproducibility
     (run_dir/"config.yaml").write_text(Path(args.config).read_text())

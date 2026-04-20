@@ -15,9 +15,53 @@ def _band_limited_noise(rng: np.random.Generator, n: int, sr: int, low: float, h
     b, a = butter(4, [low / nyq, high / nyq], btype="band")
     return filtfilt(b, a, x)
 
-def generate_eeg(cfg: Dict[str, Any], t: np.ndarray, phase: np.ndarray, seed: int) -> np.ndarray:
+
+def _shift_signal(x: np.ndarray, shift: int) -> np.ndarray:
+    if shift == 0:
+        return x.copy()
+    out = np.empty_like(x)
+    if shift > 0:
+        out[:shift] = x[0]
+        out[shift:] = x[:-shift]
+    else:
+        out[shift:] = x[-1]
+        out[:shift] = x[-shift:]
+    return out
+
+
+def _trial_drift(rng: np.random.Generator, n: int, strength: float) -> np.ndarray:
+    if strength <= 0:
+        return np.ones(n, dtype=np.float32)
+    slope = rng.normal(0.0, strength)
+    curve = np.linspace(-0.5, 0.5, n, dtype=np.float32)
+    return np.clip(1.0 + slope * curve, 0.5, 1.8).astype(np.float32)
+
+
+def _corrupt_channel(
+    rng: np.random.Generator,
+    signal: np.ndarray,
+    dropout_prob: float,
+    corruption_strength: float,
+) -> np.ndarray:
+    out = signal.copy()
+    if rng.random() >= dropout_prob:
+        return out
+    n = len(out)
+    span = max(8, int(rng.uniform(0.08, 0.22) * n))
+    start = int(rng.integers(0, max(1, n - span)))
+    end = min(n, start + span)
+    if rng.random() < 0.5:
+        out[start:end] *= rng.uniform(0.0, 0.15)
+    else:
+        out[start:end] += rng.normal(0.0, corruption_strength * max(1e-3, float(np.std(out))), end - start)
+    return out
+
+
+def generate_eeg(cfg: Dict[str, Any], t: np.ndarray, phase: np.ndarray, seed: int, profile: Dict[str, Any] | None = None) -> np.ndarray:
     rng = np.random.default_rng(seed)
     eeg_cfg = cfg["signals"]["eeg"]
+    aug_cfg = cfg.get("augment", {})
+    profile = profile or {}
     C = int(eeg_cfg["n_channels"])
     mu = float(eeg_cfg["mu_hz"])
     beta = float(eeg_cfg["beta_hz"])
@@ -35,6 +79,9 @@ def generate_eeg(cfg: Dict[str, Any], t: np.ndarray, phase: np.ndarray, seed: in
     amp[(phase == 3)] *= rebound
     # smooth envelope
     amp = np.convolve(amp, np.ones(33)/33, mode="same").astype(np.float32)
+    amp = _shift_signal(amp, int(profile.get("eeg_latency_samples", 0)))
+    amp *= float(profile.get("eeg_gain", 1.0)) * float(profile.get("eeg_trial_gain", 1.0))
+    amp *= _trial_drift(rng, T, float(aug_cfg.get("eeg_drift_strength", 0.0)))
 
     for c in range(C):
         ph1 = rng.uniform(0, 2*np.pi)
@@ -49,12 +96,21 @@ def generate_eeg(cfg: Dict[str, Any], t: np.ndarray, phase: np.ndarray, seed: in
         spikes = rng.random(T) < artifact_prob
         if spikes.any():
             sig[spikes] += rng.normal(0, 4.0, spikes.sum())
+        sig = _corrupt_channel(
+            rng,
+            sig,
+            dropout_prob=float(aug_cfg.get("channel_dropout_prob", 0.0)),
+            corruption_strength=float(aug_cfg.get("corruption_strength", 0.0)),
+        )
         X[:, c] = sig.astype(np.float32)
     return X
 
-def generate_emg(cfg: Dict[str, Any], t: np.ndarray, phase: np.ndarray, seed: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+def generate_emg(cfg: Dict[str, Any], t: np.ndarray, phase: np.ndarray, seed: int, profile: Dict[str, Any] | None = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     emg_cfg = cfg["signals"]["emg"]
+    aug_cfg = cfg.get("augment", {})
+    profile = profile or {}
     muscles = emg_cfg["muscles"]
     M = len(muscles)
     sr = int(cfg["sample_rate_hz"])
@@ -76,11 +132,14 @@ def generate_emg(cfg: Dict[str, Any], t: np.ndarray, phase: np.ndarray, seed: in
     # smooth
     for k in range(K):
         H_true[k] = np.convolve(H_true[k], np.ones(41)/41, mode="same")
+        H_true[k] = _shift_signal(H_true[k], int(profile.get("emg_latency_samples", 0)))
 
     # muscle envelopes
     env = (W_true @ H_true).astype(np.float32)
     # add small muscle-specific modulation
     env *= (0.9 + 0.2*rng.random((M, 1))).astype(np.float32)
+    env *= float(profile.get("emg_gain", 1.0)) * float(profile.get("emg_trial_gain", 1.0))
+    env *= _trial_drift(rng, T, float(aug_cfg.get("emg_drift_strength", 0.0)))[None, :]
 
     # crosstalk mixing
     crosstalk = float(emg_cfg["crosstalk"])
@@ -94,6 +153,12 @@ def generate_emg(cfg: Dict[str, Any], t: np.ndarray, phase: np.ndarray, seed: in
         n = _band_limited_noise(rng, T, sr, 20.0, 150.0)
         sig = env_mix[m] * n
         sig += rng.normal(0, base_noise_std, T)
+        sig = _corrupt_channel(
+            rng,
+            sig,
+            dropout_prob=float(aug_cfg.get("channel_dropout_prob", 0.0)),
+            corruption_strength=float(aug_cfg.get("corruption_strength", 0.0)),
+        )
         raw[:, m] = sig.astype(np.float32)
 
     # envelope (rectify + lowpass)

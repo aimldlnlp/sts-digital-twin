@@ -1,100 +1,43 @@
 # STS Digital Twin Pipeline
 
-> A multimodal sit-to-stand virtual lab for phase decoding, EMG synergy analysis, and assistive torque benchmarking.
+> A paper-style multimodal sit-to-stand benchmark for phase decoding, synergy analysis, torque prediction, and stress-tested fusion behavior.
 
 <p align="center">
-  <img src="assets/showcase/trial_000_multimodal.gif" alt="Multimodal STS demo" width="100%" />
+  <img src="assets/showcase/v5/videos/trial_000_multimodal.gif" alt="Multimodal STS benchmark overview" width="100%" />
 </p>
 
-This project turns a sit-to-stand motion into a full offline benchmark: synchronized kinematics, EEG, EMG, phase labels, assistive torque targets, interpretable synergies, model ablations, and visual reports in one reproducible pipeline.
+This repository packages a full offline R&D bench around a synthetic sit-to-stand task: synchronized kinematics, EEG, EMG, phase labels, assistive torque targets, model training, validation reporting, and a dense visual suite. The published snapshot uses `v5` (`sts_20260420_215231`) as the canonical result because it is the best overall clean/tradeoff run to date.
 
-## At A Glance
-
-- portfolio-ready multimodal demo with animated previews
-- end-to-end benchmark from generated trials to validation report
-- clean artifact story: figures, GIFs, MP4s, JSON metrics, Markdown summary
-- stronger evaluation framing with subject-wise split by default
-
-## Highlights
-
-- multimodal STS pipeline from raw trial generation to benchmark report
-- EEG-only, EMG-only, and fusion phase decoding
-- torque prediction for exoskeleton assistance studies
-- subject-wise evaluation by default
-- paper-style figures, videos, and validation reports per run
-
-## Demo Gallery
-
-<p align="center">
-  <img src="assets/showcase/trial_000_multimodal.gif" alt="Trial 000 multimodal demo" width="49%" />
-  <img src="assets/showcase/trial_000_ablation.gif" alt="Trial 000 ablation demo" width="49%" />
-</p>
-
-<p align="center">
-  <img src="assets/showcase/trial_112_multimodal.gif" alt="Trial 112 multimodal demo" width="49%" />
-  <img src="assets/showcase/fig_skeleton_grid_2x2.png" alt="Skeleton snapshot grid" width="49%" />
-</p>
-
-## What It Shows
-
-- 3D stick-skeleton kinematics across the full sit-to-stand cycle
-- EEG and EMG signals aligned with movement phase
-- learned EMG synergy structure
-- fusion vs single-modality phase decoding
-- assistive torque prediction under a controlled benchmark protocol
+Reference report: [`docs/validation_subject.md`](docs/validation_subject.md)
+Curated showcase media: [`assets/showcase/v5`](assets/showcase/v5)
 
 ## Benchmark Snapshot
 
-Reference report: [`docs/validation_subject.md`](docs/validation_subject.md)
-
 | Task | Model | Result |
 | --- | --- | ---: |
-| Phase decoding | EEG | Macro-F1 `0.375`, Acc `0.633` |
-| Phase decoding | EMG | Macro-F1 `0.785`, Acc `0.806` |
-| Phase decoding | Fusion | Macro-F1 `0.784`, Acc `0.803` |
-| Torque prediction | Fusion | RMSE `0.840`, approx. R2 `0.314`, corr `0.587` |
-| Synergy decomposition | NMF | VAF `0.645` with `K=3` synergies |
+| Phase decoding | EEG | Macro-F1 `0.451`, Acc `0.464`, Balanced Acc `0.457` |
+| Phase decoding | EMG | Macro-F1 `0.533`, Acc `0.556`, Balanced Acc `0.588` |
+| Phase decoding | Fusion | Macro-F1 `0.714`, Acc `0.689`, Balanced Acc `0.703` |
+| Torque prediction | EMG | RMSE `0.925`, R2 `0.159`, Corr `0.533` |
+| Torque prediction | Fusion | RMSE `0.894`, R2 `0.215`, Corr `0.544` |
+| Synergy decomposition | NMF | VAF `0.695` with `K=3` synergies |
 
-Protocol:
-- 30 subjects
-- 240 trials
-- 2160 segments
-- subject-wise split with zero subject overlap across train, val, and test
+Published `v5` highlights:
+- `best_clean: true`
+- `best_tradeoff: true`
+- `best_robust_torque: true`
+- fusion phase gain over EMG: `+0.180` Macro-F1 and `+0.133` accuracy
+- fusion torque gain over EMG: `-0.031` RMSE
 
-## Visual Outputs
+What still fails:
+- phase fusion under `emg_noise`: `0.210` Macro-F1
+- phase fusion under `drop_eeg`: `0.510` Macro-F1
+- phase fusion under `drop_emg`: `0.070` Macro-F1
+- torque fusion high-target RMSE: `1.419`
+- torque fusion under `drop_emg`: `1.642` RMSE
 
-<p align="center">
-  <img src="assets/showcase/fig1_coupling_heatmap.png" alt="Cross-modal coupling heatmap" width="49%" />
-  <img src="assets/showcase/fig3_synergy_weights.png" alt="Synergy weights" width="49%" />
-</p>
-
-The full local run also exports:
-- coupling heatmaps
-- EEG time-frequency plots
-- synergy activation heatmaps
-- modality ablation figures
-- torque prediction overlays
-- robustness curves
-- MP4 demo videos
-
-## Why It Feels Like A Real Project
-
-- config-driven pipeline with a single `run_all.py` entrypoint
-- benchmark artifacts saved per run
-- validation report in Markdown and JSON
-- fairer default evaluation with `split_strategy: subject`
-- clear separation between demo assets and heavyweight local outputs
-
-The data source is still in-silico. The point of the repository is to function as a serious offline R&D bench for multimodal controller development, not to pretend these are clinical trial results.
-
-## Tech Stack
-
-- Python for orchestration and experiment scripting
-- NumPy and SciPy for signal generation and feature processing
-- PyTorch for phase decoding and torque regression models
-- Matplotlib for paper-style visual outputs
-- ffmpeg for demo video and GIF export
-- YAML configs for reproducible run settings
+Interpretation:
+the public snapshot favors the best overall clean/scientific tradeoff, not the single strongest robustness-only run. Earlier experiments pushed phase robustness harder, but `v5` is the most balanced benchmark result to publish.
 
 ## Quickstart
 
@@ -105,7 +48,7 @@ pip install -r requirements.txt
 python run_all.py --config configs/default.yaml
 ```
 
-Generated outputs land in `outputs/<run_id>/`:
+Generated runs are written to `outputs/<run_id>/` with:
 - `data_raw/`
 - `artifacts/`
 - `figures/`
@@ -114,49 +57,78 @@ Generated outputs land in `outputs/<run_id>/`:
 
 ## Pipeline
 
-1. Generate synchronized STS trials with kinematics, EEG, EMG, phase labels, and torque targets.
+1. Generate heterogeneous synthetic STS trials with synchronized kinematics, EEG, EMG, phase labels, and assistive torque targets.
 2. Fit EMG synergies with NMF.
 3. Train phase decoders for `eeg`, `emg`, and `fusion`.
-4. Train the fusion torque regressor.
-5. Render figures, videos, and a validation report.
+4. Train torque regressors for `emg` and `fusion`.
+5. Render paper-style figures, videos, and a validation report.
 
-## Run Manually
+## Animated Gallery
 
-```bash
-python scripts/01_generate_data.py --config configs/default.yaml
-python scripts/02_fit_synergy.py --run_dir outputs/<run_id>
-python scripts/03_train_phase.py --run_dir outputs/<run_id> --modality fusion
-python scripts/03_train_phase.py --run_dir outputs/<run_id> --modality eeg
-python scripts/03_train_phase.py --run_dir outputs/<run_id> --modality emg
-python scripts/04_train_torque.py --run_dir outputs/<run_id>
-python scripts/05_make_figures.py --run_dir outputs/<run_id>
-python scripts/06_render_skeleton.py --run_dir outputs/<run_id>
-python scripts/07_make_video.py --run_dir outputs/<run_id> --trial_index 0
-python scripts/08_make_video_ablation.py --run_dir outputs/<run_id> --trial_index 0
-python scripts/09_make_validation_report.py --run_dir outputs/<run_id>
-```
+<p align="center">
+  <img src="assets/showcase/v5/videos/trial_000_ablation_phase.gif" alt="Phase ablation animation" width="49%" />
+  <img src="assets/showcase/v5/videos/trial_000_stress_phase_robustness.gif" alt="Stress phase robustness animation" width="49%" />
+</p>
 
-To recompute a benchmark for an existing run with subject-wise evaluation:
+<p align="center">
+  <img src="assets/showcase/v5/videos/trial_000_torque_error_range.gif" alt="Torque error range animation" width="49%" />
+  <img src="assets/showcase/v5/videos/trial_000_fusion_benchmark_montage.gif" alt="Fusion benchmark montage animation" width="49%" />
+</p>
 
-```bash
-python scripts/09_make_validation_report.py \
-  --run_dir outputs/<run_id> \
-  --split_strategy subject \
-  --recompute
-```
+## Figure Gallery
 
-## Repo Assets
+<p align="center">
+  <img src="assets/showcase/v5/figures/coupling_heatmap.png" alt="Cross-modal coupling heatmap" width="49%" />
+  <img src="assets/showcase/v5/figures/eeg_spectrogram.png" alt="EEG spectrogram" width="49%" />
+</p>
 
-- benchmark report: [`docs/validation_subject.md`](docs/validation_subject.md)
-- showcase figures and GIFs: [`assets/showcase`](assets/showcase)
+<p align="center">
+  <img src="assets/showcase/v5/figures/eeg_band_profile.png" alt="EEG band profile" width="49%" />
+  <img src="assets/showcase/v5/figures/fusion_ablation.png" alt="Fusion ablation figure" width="49%" />
+</p>
+
+<p align="center">
+  <img src="assets/showcase/v5/figures/robustness_curve.png" alt="Robustness curve" width="49%" />
+  <img src="assets/showcase/v5/figures/robustness_delta_panels.png" alt="Robustness delta panels" width="49%" />
+</p>
+
+<p align="center">
+  <img src="assets/showcase/v5/figures/skeleton_grid_2x2.png" alt="Skeleton grid" width="49%" />
+  <img src="assets/showcase/v5/figures/synergy_activation_heatmap.png" alt="Synergy activation heatmap" width="49%" />
+</p>
+
+<p align="center">
+  <img src="assets/showcase/v5/figures/synergy_summary_grid.png" alt="Synergy summary grid" width="49%" />
+  <img src="assets/showcase/v5/figures/synergy_weights.png" alt="Synergy weights" width="49%" />
+</p>
+
+<p align="center">
+  <img src="assets/showcase/v5/figures/torque_error_distribution.png" alt="Torque error distribution" width="49%" />
+  <img src="assets/showcase/v5/figures/torque_overlay.png" alt="Torque overlay" width="49%" />
+</p>
+
+## Why This Repo Exists
+
+- serious offline benchmark framing, even though the data is synthetic
+- reproducible subject-wise evaluation with explicit stress cases
+- modality-aware fusion models instead of a toy early-fusion baseline only
+- reportable artifacts that are usable for portfolio, benchmark, and ablation storytelling
+
+## Tech Stack
+
+- Python for orchestration and experiment scripting
+- NumPy and SciPy for signal generation and feature processing
+- PyTorch for phase decoding and torque regression
+- Matplotlib for paper-style figure rendering
+- ffmpeg for MP4 and GIF export
+- YAML configs for reproducible benchmark settings
 
 ## Intended Use
 
 Use this repo for:
-- portfolio showcase
-- offline algorithm prototyping
-- multimodal ablation studies
-- internal demo and visualization workflows
-- pre-real-data benchmark development
+- multimodal benchmark development
+- offline controller prototyping
+- ablation and robustness studies
+- technical demo and portfolio presentation
 
-Do not use it to claim validated performance on real human recordings without an external calibration and evaluation stage.
+Do not use it to claim validated clinical performance on real human recordings without external data collection and evaluation.

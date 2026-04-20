@@ -40,11 +40,11 @@ def _fk_leg(pelvis: np.ndarray, hip_flex: float, knee_flex: float, ankle: float,
     return hip, knee, ankle, toe
 
 def generate_sts_kinematics(cfg: Dict[str, Any], sr: int, seed: int,
-                            anthropometry: Dict[str, Any]) -> Dict[str, Any]:
+                            anthropometry: Dict[str, Any], phase_durs_s: list[float] | None = None) -> Dict[str, Any]:
     rng = np.random.default_rng(seed)
 
     dur = float(cfg["data"]["duration_s"])
-    phase_durs = cfg["data"]["phase_durations_s"]
+    phase_durs = phase_durs_s if phase_durs_s is not None else cfg["data"]["phase_durations_s"]
     assert abs(sum(phase_durs) - dur) < 1e-6, "phase durations must sum to duration"
 
     T = int(dur * sr)

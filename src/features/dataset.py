@@ -1,4 +1,3 @@
-\
 from __future__ import annotations
 import json
 from pathlib import Path
@@ -28,6 +27,12 @@ def compute_eeg_bandpower_features(eeg_seg: np.ndarray, sr: int) -> np.ndarray:
         feats.append(bandpower(eeg_seg[:, c], sr, 13.0, 30.0))  # beta
     return np.array(feats, dtype=np.float32)
 
+
+def get_channel_counts(cfg: Dict[str, Any]) -> tuple[int, int]:
+    eeg_ch = int(cfg["signals"]["eeg"]["n_channels"])
+    emg_ch = len(cfg["signals"]["emg"]["muscles"])
+    return eeg_ch, emg_ch
+
 def make_segments(run_dir: Path, cfg: Dict[str, Any], modality: str = "fusion") -> Dict[str, Any]:
     sr = int(cfg["sample_rate_hz"])
     seg_len = int(cfg["train"]["segment_len"])
@@ -39,6 +44,8 @@ def make_segments(run_dir: Path, cfg: Dict[str, Any], modality: str = "fusion") 
     y_tau = []
     subj_ids = []
     trial_ids = []
+    starts = []
+    ends = []
 
     for item in index:
         tp = run_dir / item["path"]
@@ -68,6 +75,8 @@ def make_segments(run_dir: Path, cfg: Dict[str, Any], modality: str = "fusion") 
             X_list.append(seg.T)  # (C, L) for Conv1d
             y_phase.append(ph)
             y_tau.append(tau)
+            starts.append(start)
+            ends.append(end)
         n_segments = (T - seg_len)//stride + 1
         subj_ids.extend([int(item["subject"])] * n_segments)
         trial_ids.extend([int(item["trial_id"])] * n_segments)
@@ -77,7 +86,17 @@ def make_segments(run_dir: Path, cfg: Dict[str, Any], modality: str = "fusion") 
     y_tau = np.array(y_tau, dtype=np.float32)
     subj_ids = np.array(subj_ids, dtype=np.int64)
     trial_ids = np.array(trial_ids, dtype=np.int64)
-    return {"X": X, "y_phase": y_phase, "y_tau": y_tau, "subj": subj_ids, "trial": trial_ids}
+    starts = np.array(starts, dtype=np.int64)
+    ends = np.array(ends, dtype=np.int64)
+    return {
+        "X": X,
+        "y_phase": y_phase,
+        "y_tau": y_tau,
+        "subj": subj_ids,
+        "trial": trial_ids,
+        "start": starts,
+        "end": ends,
+    }
 
 def select_split_groups(seg: Dict[str, Any], cfg: Dict[str, Any]) -> np.ndarray | None:
     strategy = cfg.get("train", {}).get("split_strategy", "segment")
@@ -143,4 +162,32 @@ class StandardScaler1D:
         sc = StandardScaler1D()
         sc.mean = np.array(d["mean"], dtype=np.float32)
         sc.std = np.array(d["std"], dtype=np.float32)
+        return sc
+
+
+class StandardScalerTarget:
+    def __init__(self):
+        self.mean = None
+        self.std = None
+
+    def fit(self, y: np.ndarray) -> "StandardScalerTarget":
+        y = np.asarray(y, dtype=np.float32)
+        self.mean = float(np.mean(y))
+        self.std = float(np.std(y) + 1e-6)
+        return self
+
+    def transform(self, y: np.ndarray) -> np.ndarray:
+        return (np.asarray(y, dtype=np.float32) - self.mean) / self.std
+
+    def inverse_transform(self, y: np.ndarray) -> np.ndarray:
+        return np.asarray(y, dtype=np.float32) * self.std + self.mean
+
+    def to_dict(self) -> dict:
+        return {"mean": float(self.mean), "std": float(self.std)}
+
+    @staticmethod
+    def from_dict(d: dict) -> "StandardScalerTarget":
+        sc = StandardScalerTarget()
+        sc.mean = float(d["mean"])
+        sc.std = float(d["std"])
         return sc

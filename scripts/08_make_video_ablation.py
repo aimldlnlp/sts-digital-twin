@@ -2,48 +2,32 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from pathlib import Path
-from typing import Dict, Any, Tuple, List
+from typing import Any
 
-import numpy as np
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from matplotlib.colors import ListedColormap
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
+from matplotlib.colors import ListedColormap
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-from src.common import load_yaml, ensure_dir
-from src.features.dataset import load_trials, StandardScaler1D
-from src.models.nets import PhaseClassifier
-from src.models.train_utils import get_device
+from src.common import ensure_dir, load_yaml
+from src.features.dataset import StandardScaler1D, load_trials
+from src.models.nets import load_model_checkpoint
+from src.models.train_utils import get_device, smooth_sequence_labels
+from src.viz import MODALITY_COLORS, PHASE_COLORS, PHASE_NAMES, add_corner_label, apply_scientific_luxe_style, short_phase_name, style_axes
 
 
 MODS = ["eeg", "emg", "fusion"]
-PANEL = {"eeg": "A", "emg": "B", "fusion": "C"}
-PHASE_NAMES = ["Preparation", "Momentum", "Extension", "Stabilization"]
-PHASE_COLORS = ["#4c78a8", "#f58518", "#54a24b", "#b279a2"]
-MOD_COLORS = {"eeg": "#1f77b4", "emg": "#2ca02c", "fusion": "#d62728"}
 
 
-def apply_style() -> None:
-    mpl.rcParams.update({
-        "font.family": "serif",
-        "font.serif": ["DejaVu Serif", "Times New Roman", "Times"],
-        "font.size": 10.0,
-        "axes.titlesize": 11.0,
-        "axes.labelsize": 10.0,
-        "axes.linewidth": 0.8,
-        "xtick.direction": "in",
-        "ytick.direction": "in",
-        "legend.frameon": False,
-    })
-
-
-def _zscore(x: np.ndarray) -> np.ndarray:
+def zscore(x: np.ndarray) -> np.ndarray:
     return (x - x.mean()) / (x.std() + 1e-6)
 
 
-def _input_by_modality(eeg: np.ndarray, emg_env: np.ndarray, modality: str) -> np.ndarray:
+def input_by_modality(eeg: np.ndarray, emg_env: np.ndarray, modality: str) -> np.ndarray:
     if modality == "eeg":
         return eeg
     if modality == "emg":
@@ -51,212 +35,248 @@ def _input_by_modality(eeg: np.ndarray, emg_env: np.ndarray, modality: str) -> n
     return np.concatenate([eeg, emg_env], axis=1)
 
 
-def _interpolate_probs(probs: np.ndarray) -> np.ndarray:
-    # probs: (T, C) with NaN at edges
-    out = probs.copy()
-    T, C = out.shape
-    idx = np.arange(T)
-    valid = ~np.isnan(out[:, 0])
+def interpolate_probs(probs: np.ndarray) -> np.ndarray:
+    output = probs.copy()
+    t_idx = np.arange(output.shape[0])
+    valid = ~np.isnan(output[:, 0])
     if valid.sum() == 0:
-        out[:] = 1.0 / C
-        return out
-    for c in range(C):
-        out[:, c] = np.interp(idx, idx[valid], out[valid, c])
-    out = np.clip(out, 1e-8, None)
-    out /= out.sum(axis=1, keepdims=True)
-    return out
+        output[:] = 1.0 / output.shape[1]
+        return output
+    for c in range(output.shape[1]):
+        output[:, c] = np.interp(t_idx, t_idx[valid], output[valid, c])
+    output = np.clip(output, 1e-8, None)
+    output /= output.sum(axis=1, keepdims=True)
+    return output
 
 
-def predict_phase_track(
-    run_dir: Path,
-    cfg: Dict[str, Any],
-    eeg: np.ndarray,
-    emg_env: np.ndarray,
-    modality: str,
-) -> Tuple[np.ndarray, np.ndarray]:
+def predict_phase_track(run_dir: Path, cfg: dict[str, Any], eeg: np.ndarray, emg_env: np.ndarray, modality: str) -> tuple[np.ndarray, np.ndarray]:
     scaler_path = run_dir / "artifacts" / f"scaler_{modality}.json"
     model_path = run_dir / "artifacts" / f"phase_model_{modality}.pt"
-    if not scaler_path.exists():
-        raise FileNotFoundError(f"Missing scaler: {scaler_path}")
-    if not model_path.exists():
-        raise FileNotFoundError(f"Missing model: {model_path}")
-
-    inp = _input_by_modality(eeg, emg_env, modality)
-    T = inp.shape[0]
-    L = int(cfg["train"]["segment_len"])
-    half = L // 2
-    n_classes = 4
-
-    centers = np.arange(half, T - half + 1, dtype=np.int64)
-    segs = np.stack([inp[c - half:c + half].T for c in centers], axis=0).astype(np.float32)
+    inp = input_by_modality(eeg, emg_env, modality)
+    total = inp.shape[0]
+    seg_len = int(cfg["train"]["segment_len"])
+    half = seg_len // 2
+    centers = np.arange(half, total - half + 1, dtype=np.int64)
+    segments = np.stack([inp[c - half:c + half].T for c in centers], axis=0).astype(np.float32)
 
     scaler = StandardScaler1D.from_dict(json.loads(scaler_path.read_text()))
-    x = scaler.transform(segs)
-
+    xs = scaler.transform(segments)
     device = get_device()
-    model = PhaseClassifier(in_ch=x.shape[1], n_classes=n_classes).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model = load_model_checkpoint(model_path, cfg, task="phase", modality=modality, device=device)
     model.eval()
 
-    logits_all = []
-    bs = 512
+    logits = []
     with torch.no_grad():
-        for i in range(0, len(x), bs):
-            xb = torch.from_numpy(x[i:i + bs]).to(device)
-            logits_all.append(model(xb).cpu().numpy())
-    logits = np.concatenate(logits_all, axis=0)
-    logits -= logits.max(axis=1, keepdims=True)
-    p = np.exp(logits)
-    p /= p.sum(axis=1, keepdims=True)
+        for offset in range(0, len(xs), 512):
+            xb = torch.from_numpy(xs[offset:offset + 512]).to(device)
+            logits.append(model(xb).cpu().numpy())
+    logits_arr = np.concatenate(logits, axis=0)
+    logits_arr -= logits_arr.max(axis=1, keepdims=True)
+    probs = np.exp(logits_arr)
+    probs /= probs.sum(axis=1, keepdims=True)
 
-    probs = np.full((T, n_classes), np.nan, dtype=np.float32)
-    probs[centers] = p.astype(np.float32)
-    probs = _interpolate_probs(probs)
-    pred = probs.argmax(axis=1).astype(np.int64)
-    return probs, pred
+    track = np.full((total, 4), np.nan, dtype=np.float32)
+    track[centers] = probs.astype(np.float32)
+    track = interpolate_probs(track)
+    pred = track.argmax(axis=1).astype(np.int64)
+    window = int(cfg.get("eval", {}).get("phase_smoothing_window", 1))
+    pred = smooth_sequence_labels(pred, window)
+    return track, pred
 
 
 def load_macro_f1(run_dir: Path, modality: str) -> float:
-    p = run_dir / "artifacts" / f"phase_metrics_{modality}.json"
-    if not p.exists():
+    path = run_dir / "artifacts" / f"phase_metrics_{modality}.json"
+    if not path.exists():
         return float("nan")
-    d = json.loads(p.read_text())
-    return float(d.get("test_macro_f1", float("nan")))
+    return float(json.loads(path.read_text()).get("test_macro_f1", float("nan")))
+
+
+def phase_segments(t: np.ndarray, phase: np.ndarray) -> list[tuple[float, float, int]]:
+    starts = [0]
+    starts.extend(list(np.where(np.diff(phase) != 0)[0] + 1))
+    starts.append(len(phase))
+    spans: list[tuple[float, float, int]] = []
+    for i0, i1 in zip(starts[:-1], starts[1:]):
+        spans.append((float(t[i0]), float(t[i1 - 1]), int(phase[i0])))
+    return spans
+
+
+def export_gif(video_path: Path, fps: int) -> Path:
+    gif_path = video_path.with_suffix(".gif")
+    palette_path = gif_path.with_name(f"{gif_path.stem}_palette.png")
+    vf = f"fps={max(1, min(20, int(fps)))},scale=1200:-1:flags=lanczos"
+    subprocess.check_call([
+        "ffmpeg", "-y", "-i", str(video_path), "-vf", f"{vf},palettegen=stats_mode=diff", str(palette_path)
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.check_call([
+        "ffmpeg", "-y", "-i", str(video_path), "-i", str(palette_path), "-lavfi", f"{vf}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3", str(gif_path)
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    palette_path.unlink(missing_ok=True)
+    return gif_path
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--run_dir", type=str, required=True)
-    ap.add_argument("--trial_index", type=int, default=0)
-    ap.add_argument("--fps", type=int, default=30)
-    ap.add_argument("--frame_step", type=int, default=2)
-    ap.add_argument("--dpi", type=int, default=150)
-    ap.add_argument("--crf", type=int, default=18, help="H.264 quality (lower is better, typical 16-23).")
-    ap.add_argument("--preset", type=str, default="slow",
-                    choices=["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"])
-    ap.add_argument("--max_frames", type=int, default=None, help="Optional cap for quick debug.")
-    ap.add_argument("--out_path", type=str, default=None)
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run_dir", type=str, required=True)
+    parser.add_argument("--trial_index", type=int, default=0)
+    parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument("--frame_step", type=int, default=2)
+    parser.add_argument("--dpi", type=int, default=150)
+    parser.add_argument("--crf", type=int, default=18)
+    parser.add_argument("--preset", type=str, default="slow", choices=["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"])
+    parser.add_argument("--max_frames", type=int, default=None)
+    parser.add_argument("--out_path", type=str, default=None)
+    args = parser.parse_args()
 
     if not animation.writers.is_available("ffmpeg"):
         raise RuntimeError("FFmpeg writer is not available. Please install `ffmpeg` first.")
 
     run_dir = Path(args.run_dir)
     cfg = load_yaml(run_dir / "config.yaml")
-    apply_style()
+    style_info = apply_scientific_luxe_style("video")
 
     trials = load_trials(run_dir)
-    tp = trials[min(args.trial_index, len(trials) - 1)]
-    d = np.load(tp, allow_pickle=True)
+    trial_path = trials[min(args.trial_index, len(trials) - 1)]
+    data = np.load(trial_path, allow_pickle=True)
 
-    t = d["t"].astype(np.float32)
-    phase = d["phase"].astype(np.int64)
-    eeg = d["eeg"].astype(np.float32)
-    emg_env = d["emg_env"].astype(np.float32)
+    t = data["t"].astype(np.float32)
+    phase = data["phase"].astype(np.int64)
+    eeg = data["eeg"].astype(np.float32)
+    emg_env = data["emg_env"].astype(np.float32)
+    sig_eeg = zscore(eeg[:, 0])
+    sig_emg = zscore(emg_env.mean(axis=1))
+    spans = phase_segments(t, phase)
 
-    sig_eeg = _zscore(eeg[:, 0])
-    sig_emg = _zscore(emg_env.mean(axis=1))
+    pred_map: dict[str, np.ndarray] = {}
+    prob_map: dict[str, np.ndarray] = {}
+    f1_map: dict[str, float] = {}
+    for modality in MODS:
+        probs, pred = predict_phase_track(run_dir, cfg, eeg, emg_env, modality)
+        pred_map[modality] = pred
+        prob_map[modality] = probs
+        f1_map[modality] = load_macro_f1(run_dir, modality)
 
-    pred_map: Dict[str, np.ndarray] = {}
-    prob_map: Dict[str, np.ndarray] = {}
-    f1_map: Dict[str, float] = {}
-    for m in MODS:
-        probs, pred = predict_phase_track(run_dir, cfg, eeg, emg_env, m)
-        pred_map[m] = pred
-        prob_map[m] = probs
-        f1_map[m] = load_macro_f1(run_dir, m)
+    fig = plt.figure(figsize=(15.6, 7.8), constrained_layout=True)
+    gs = fig.add_gridspec(2, 3, height_ratios=[2.2, 1.1])
+    ax_sig = {modality: fig.add_subplot(gs[0, idx]) for idx, modality in enumerate(MODS)}
+    ax_phase = {modality: fig.add_subplot(gs[1, idx]) for idx, modality in enumerate(MODS)}
 
-    # Figure layout: 2 rows x 3 columns
-    fig = plt.figure(figsize=(15.5, 7.6), constrained_layout=True)
-    gs = fig.add_gridspec(2, 3, height_ratios=[2.5, 1.2])
-    ax_sig = {m: fig.add_subplot(gs[0, i]) for i, m in enumerate(MODS)}
-    ax_phase = {m: fig.add_subplot(gs[1, i]) for i, m in enumerate(MODS)}
+    cmap = ListedColormap(PHASE_COLORS)
+    sig_prog: dict[str, Any] = {}
+    conf_line: dict[str, Any] = {}
+    sig_cursor: dict[str, Any] = {}
+    phase_cursor: dict[str, Any] = {}
+    info_text: dict[str, Any] = {}
 
-    cmap_phase = ListedColormap(PHASE_COLORS)
-    sig_prog = {}
-    sig_cursor = {}
-    phase_cursor = {}
-    info_text = {}
-
-    for m in MODS:
-        ax = ax_sig[m]
-        if m == "eeg":
-            ax.plot(t, sig_eeg, color=MOD_COLORS[m], alpha=0.22, linewidth=1.0)
-            ln, = ax.plot([], [], color=MOD_COLORS[m], linewidth=1.7)
-            ymin, ymax = sig_eeg.min(), sig_eeg.max()
-            ax.set_ylabel("EEG z-score")
-        elif m == "emg":
-            ax.plot(t, sig_emg, color=MOD_COLORS[m], alpha=0.22, linewidth=1.0)
-            ln, = ax.plot([], [], color=MOD_COLORS[m], linewidth=1.7)
-            ymin, ymax = sig_emg.min(), sig_emg.max()
-            ax.set_ylabel("EMG z-score")
+    for modality in MODS:
+        ax = ax_sig[modality]
+        style_axes(ax)
+        for left, right, phase_idx in spans:
+            ax.axvspan(left, right, color=PHASE_COLORS[phase_idx], alpha=0.04, linewidth=0, zorder=0)
+        if modality == "eeg":
+            base_signal = sig_eeg
+            accent = MODALITY_COLORS["eeg"]
+            accent_text = "EEG"
+        elif modality == "emg":
+            base_signal = sig_emg
+            accent = MODALITY_COLORS["emg"]
+            accent_text = "EMG"
         else:
-            ax.plot(t, sig_eeg, color="#1f77b4", alpha=0.18, linewidth=1.0)
-            ax.plot(t, sig_emg, color="#2ca02c", alpha=0.18, linewidth=1.0)
-            ln, = ax.plot([], [], color=MOD_COLORS[m], linewidth=1.8)
-            mix = 0.5 * (sig_eeg + sig_emg)
-            ymin, ymax = mix.min(), mix.max()
-            ax.set_ylabel("Fusion signal")
-
-        pad = 0.2 * float(ymax - ymin + 1e-6)
+            base_signal = 0.5 * (sig_eeg + sig_emg)
+            accent = MODALITY_COLORS["fusion"]
+            accent_text = "FUSION"
+        ax.plot(t, base_signal, color=accent, alpha=0.18, linewidth=1.2)
+        ax.fill_between(t, base_signal, 0.0, color=accent, alpha=0.07)
+        sig_prog[modality] = ax.plot([], [], color=accent, linewidth=1.8)[0]
+        pad = 0.25 * float(base_signal.max() - base_signal.min() + 1e-6)
+        conf = prob_map[modality].max(axis=1)
+        ymin = float(base_signal.min() - pad)
+        ymax = float(base_signal.max() + pad)
+        conf_trace = ymin + 0.12 * (ymax - ymin) * conf
+        ax.fill_between(t, ymin, conf_trace, color=accent, alpha=0.05, linewidth=0)
+        conf_line[modality] = ax.plot([], [], color=accent, linewidth=1.0, alpha=0.55)[0]
+        sig_cursor[modality] = ax.axvline(float(t[0]), color="#312925", linestyle="--", linewidth=1.0)
         ax.set_xlim(float(t[0]), float(t[-1]))
-        ax.set_ylim(float(ymin - pad), float(ymax + pad))
-        ax.set_xlabel("Time (s)")
-        ax.set_title(f"{PANEL[m]}. {m.upper()} model  |  test Macro-F1={f1_map[m]:.3f}")
-        cur = ax.axvline(t[0], color="#333333", linestyle="--", linewidth=1.0)
-        sig_prog[m] = ln
-        sig_cursor[m] = cur
+        ax.set_ylim(ymin, ymax)
+        ax.spines["left"].set_color(accent)
+        ax.spines["left"].set_linewidth(1.0)
+        add_corner_label(ax, accent_text)
+        ax.text(0.98, 0.98, f"F1 {f1_map[modality]:.3f}", transform=ax.transAxes, ha="right", va="top", fontsize=7.9, color="#000000")
+        strip = inset_axes(ax, width="100%", height="9%", loc="upper center", borderpad=0.55)
+        strip.imshow(
+            phase[None, :],
+            aspect="auto",
+            interpolation="nearest",
+            cmap=cmap,
+            extent=[float(t[0]), float(t[-1]), 0.0, 1.0],
+            origin="lower",
+            vmin=0,
+            vmax=3,
+        )
+        style_axes(strip, hide_ticks=True)
+        strip.axvline(float(t[0]), color="#181412", linestyle="--", linewidth=0.9)
+        ax._phase_strip = strip
+        ax._conf_trace = conf_trace
 
-        axp = ax_phase[m]
-        arr = np.vstack([phase, pred_map[m]]).astype(np.float32)
-        axp.imshow(arr, aspect="auto", interpolation="nearest", cmap=cmap_phase, vmin=0, vmax=3,
-                   extent=[float(t[0]), float(t[-1]), 0.0, 2.0], origin="lower")
-        axp.set_yticks([0.5, 1.5])
-        axp.set_yticklabels(["GT", "Pred"])
+        axp = ax_phase[modality]
+        style_axes(axp, hide_ticks=True)
+        arr = np.vstack([phase, pred_map[modality]]).astype(np.float32)
+        axp.imshow(
+            arr,
+            aspect="auto",
+            interpolation="nearest",
+            cmap=cmap,
+            extent=[float(t[0]), float(t[-1]), 0.0, 2.0],
+            origin="lower",
+            vmin=0,
+            vmax=3,
+        )
         axp.set_xlim(float(t[0]), float(t[-1]))
-        axp.set_xlabel("Time (s)")
-        phase_cursor[m] = axp.axvline(t[0], color="#111111", linestyle="--", linewidth=1.0)
-        legend = " | ".join([f"{i}:{name}" for i, name in enumerate(PHASE_NAMES)])
-        axp.text(0.01, -0.48, legend, transform=axp.transAxes, fontsize=8.8)
-        info_text[m] = axp.text(0.01, 1.12, "", transform=axp.transAxes, fontsize=9.2)
+        axp.set_yticks([0.5, 1.5])
+        axp.set_yticklabels(["GT", "PR"])
+        axp.set_xlabel("time (s)")
+        add_corner_label(axp, "GT / Pred")
+        phase_cursor[modality] = axp.axvline(float(t[0]), color="#181412", linestyle="--", linewidth=1.0)
+        info_text[modality] = axp.text(0.98, 1.08, "", transform=axp.transAxes, fontsize=8.1, color="#000000", ha="right", va="bottom")
+        for x0, x1, phase_idx in spans:
+            xmid = 0.5 * (x0 + x1)
+            axp.text(xmid, 1.78, short_phase_name(phase_idx), ha="center", va="center", fontsize=7.2, color="#000000")
 
-    supt = fig.suptitle("", fontsize=12.5)
+    title = fig.suptitle(f"phase ablation  |  trial {args.trial_index:03d}", fontsize=11.2, x=0.51, y=0.992)
 
     frame_indices = list(range(0, len(t), max(1, int(args.frame_step))))
     if args.max_frames is not None:
-        frame_indices = frame_indices[:max(1, int(args.max_frames))]
+        frame_indices = frame_indices[: max(1, int(args.max_frames))]
 
     def init():
-        for m in MODS:
-            sig_prog[m].set_data([], [])
-            sig_cursor[m].set_xdata([t[0], t[0]])
-            phase_cursor[m].set_xdata([t[0], t[0]])
-            info_text[m].set_text("")
-        return [sig_prog[m] for m in MODS]
+        for modality in MODS:
+            sig_prog[modality].set_data([], [])
+            conf_line[modality].set_data([], [])
+            sig_cursor[modality].set_xdata([float(t[0]), float(t[0])])
+            phase_cursor[modality].set_xdata([float(t[0]), float(t[0])])
+            info_text[modality].set_text("")
+            ax_sig[modality]._phase_strip.lines[0].set_xdata([float(t[0]), float(t[0])])
+        return [sig_prog[modality] for modality in MODS] + [conf_line[modality] for modality in MODS]
 
-    def update(fi: int):
-        ti = float(t[fi])
-        for m in MODS:
-            if m == "eeg":
+    def update(frame_idx: int):
+        time_now = float(t[frame_idx])
+        for modality in MODS:
+            if modality == "eeg":
                 y = sig_eeg
-            elif m == "emg":
+            elif modality == "emg":
                 y = sig_emg
             else:
                 y = 0.5 * (sig_eeg + sig_emg)
-            sig_prog[m].set_data(t[:fi + 1], y[:fi + 1])
-            sig_cursor[m].set_xdata([ti, ti])
-            phase_cursor[m].set_xdata([ti, ti])
-
-            pred_cls = int(pred_map[m][fi])
-            gt_cls = int(phase[fi])
-            conf = float(prob_map[m][fi, pred_cls])
-            info_text[m].set_text(
-                f"t={ti:.2f}s | GT={gt_cls} ({PHASE_NAMES[gt_cls]}) | "
-                f"Pred={pred_cls} ({PHASE_NAMES[pred_cls]}) | p={conf:.2f}"
-            )
-
-        supt.set_text(f"Phase Ablation Video  |  trial={args.trial_index:03d}")
-        return [sig_prog[m] for m in MODS]
+            sig_prog[modality].set_data(t[: frame_idx + 1], y[: frame_idx + 1])
+            conf_line[modality].set_data(t[: frame_idx + 1], ax_sig[modality]._conf_trace[: frame_idx + 1])
+            sig_cursor[modality].set_xdata([time_now, time_now])
+            ax_sig[modality]._phase_strip.lines[0].set_xdata([time_now, time_now])
+            phase_cursor[modality].set_xdata([time_now, time_now])
+            pred_cls = int(pred_map[modality][frame_idx])
+            conf = float(prob_map[modality][frame_idx, pred_cls])
+            info_text[modality].set_text(f"{short_phase_name(pred_cls)}  p={conf:.2f}")
+        title.set_text(f"phase ablation  |  trial {args.trial_index:03d}  |  {time_now:0.2f}s")
+        return [sig_prog[modality] for modality in MODS] + [conf_line[modality] for modality in MODS]
 
     ani = animation.FuncAnimation(
         fig,
@@ -281,7 +301,10 @@ def main() -> None:
     )
     ani.save(str(out_path), writer=writer, dpi=max(80, int(args.dpi)))
     plt.close(fig)
+    gif_path = export_gif(out_path, args.fps)
+    print(f"Using font: {style_info['font_primary']}")
     print(f"Saved: {out_path}")
+    print(f"Saved: {gif_path}")
 
 
 if __name__ == "__main__":
